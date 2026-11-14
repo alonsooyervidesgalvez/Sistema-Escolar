@@ -296,7 +296,6 @@ def generar_excel_asistencia(g_nombre, anio, mes, alumnos_df):
     ws.title = "Asistencia"
     ws.views.sheetView[0].showGridLines = True
 
-    # Títulos
     ws.merge_cells("A1:G1")
     ws["A1"] = "SISTEMA DE GESTIÓN ESCOLAR - CONTROL DE ASISTENCIA"
     ws["A1"].font = font_titulo
@@ -313,10 +312,9 @@ def generar_excel_asistencia(g_nombre, anio, mes, alumnos_df):
 
     num_dias = calendar.monthrange(anio, mes)[1]
     
-    # Encabezados de tabla
     encabezados = ["N° Lista", "Nombre del Alumno", "Sexo"] + [str(d) for d in range(1, num_dias + 1)]
-    ws.append([]) # Fila vacía
-    ws.append(encabezados) # Fila 5
+    ws.append([]) 
+    ws.append(encabezados)
 
     start_row = 5
     end_row = start_row + len(alumnos_df)
@@ -324,16 +322,13 @@ def generar_excel_asistencia(g_nombre, anio, mes, alumnos_df):
     for idx, row in alumnos_df.iterrows():
         ws.append([row['N° Lista'], row['Nombre del Alumno'], row['Género']] + [""] * num_dias)
 
-    # Estilado
     ultima_col = 3 + num_dias
     aplicar_estilo_tabla(ws, start_row, 1, end_row, ultima_col, es_matriz=True)
     
-    # Formato especial para columnas fijas
     ws.column_dimensions['A'].width = 10
     ws.column_dimensions['B'].width = 35
     ws.column_dimensions['C'].width = 8
 
-    # Ancho fijo para columnas de días para escritura a mano
     for c in range(4, ultima_col + 1):
         ws.column_dimensions[get_column_letter(c)].width = 6
 
@@ -385,7 +380,6 @@ def generar_excel_calificaciones(g_nombre, periodo, acts_df, alumnos_df):
     for c in range(4, ultima_col + 1):
         ws.column_dimensions[get_column_letter(c)].width = 18
 
-    # Ajuste de altura para filas de encabezados largos
     ws.row_dimensions[5].height = 35
 
     output = io.BytesIO()
@@ -497,7 +491,6 @@ if st.session_state.role == "Administrador":
 
 menu = st.sidebar.radio("Navegación", menu_options)
 
-# Panel de sesión en la barra lateral
 st.sidebar.markdown("---")
 st.sidebar.write(
     f"👤 **Usuario:** {st.session_state.username} (`{st.session_state.role}`)"
@@ -638,7 +631,6 @@ elif menu == "👥 Mis Grupos y Alumnos":
         else:
             st.info("Primero crea al menos un grupo.")
 
-    # --- INYECCIÓN MASIVA CON PLANTILLA ---
     st.markdown("---")
     st.markdown("### 📥 Inyección Masiva (Plantilla Oficial con Estatus)")
 
@@ -760,7 +752,6 @@ elif menu == "👥 Mis Grupos y Alumnos":
             "Filtrar por grupo", list(grupo_dict.keys()), key="ver_grupo"
         )
         
-        # Opciones de búsqueda y ordenamiento visual añadidas
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             busqueda_al = st.text_input("🔍 Buscar alumno por nombre:", "", key="search_alumnos_mis_grupos")
@@ -918,7 +909,7 @@ elif menu == "📂 Plantillas de Otros Docentes":
             "No hay grupos de otros docentes disponibles en este momento para consultar."
         )
 
-# --- 4. ASISTENCIA (CON MATRIZ MANUAL, ESCANEO CON GEMINI AI Y PLANTILLA EXCEL) ---
+# --- 4. ASISTENCIA ---
 elif menu == "✅ Asistencia":
     st.subheader("Control de Asistencia, Escaneo Inteligente y Plantillas Físicas")
     
@@ -937,7 +928,6 @@ elif menu == "✅ Asistencia":
             "🖨️ Descargar Plantilla Física (Excel Estético)"
         ])
 
-        # --- PESTAÑA 1: MATRIZ MANUAL ---
         with tab_manual:
             st.write("Selecciona el grupo, año y mes. Los días inician vacíos para registrar únicamente lo necesario.")
             c_asis1, c_asis2, c_asis3 = st.columns(3)
@@ -1056,7 +1046,6 @@ elif menu == "✅ Asistencia":
             else:
                 st.warning("Este grupo no tiene alumnos activos.")
 
-        # --- PESTAÑA 2: ESCANEO CON GEMINI AI ---
         with tab_ia:
             st.markdown("### 🤖 Escanear Lista Física con Gemini AI")
             st.write("Sube una foto de tu lista física o libreta de asistencia. La Inteligencia Artificial leerá los datos y los registrará automáticamente.")
@@ -1151,7 +1140,6 @@ elif menu == "✅ Asistencia":
                             del st.session_state['datos_ia_extraidos']
                             st.rerun()
 
-        # --- PESTAÑA 3: DESCARGAR PLANTILLA FÍSICA ESTÉTICA ---
         with tab_plantilla:
             st.markdown("### 🖨️ Descargar Plantilla de Asistencia para Llenado Físico")
             st.write("Genera una hoja de cálculo con formato institucional, optimizada para imprimirse y llenarse a mano. Al escanearla de vuelta, la IA reconocerá los datos.")
@@ -1184,7 +1172,7 @@ elif menu == "✅ Asistencia":
             else:
                 st.warning("El grupo seleccionado no tiene alumnos activos.")
 
-# --- 5. EVALUACIONES (CON CONFIGURACIÓN DE FECHAS, PONDERACIÓN, ASISTENCIA Y PLANTILLAS) ---
+# --- 5. EVALUACIONES ---
 elif menu == "📊 Evaluaciones":
     st.subheader(
         "📊 Sistema de Evaluaciones, Fechas, Ponderación y Asistencia"
@@ -1408,7 +1396,7 @@ elif menu == "📊 Evaluaciones":
                 ORDER BY fecha ASC
             """,
                 conn,
-                params=(id_g_eval, period_eval),
+                params=(id_g_eval, periodo_eval),
             )
 
             if not acts_df.empty:
@@ -1770,7 +1758,7 @@ elif menu == "📊 Evaluaciones":
 
         # --- PESTAÑA 5: DESCARGAR PLANTILLA FÍSICA DE EVALUACIONES ---
         with tab_plantillas_eval:
-            st.markdown("### 🖨️ Descargar Plantilla Físicas de Evaluación (Calificaciones)")
+            st.markdown("### 🖨️ Descargar Plantilla Física de Evaluación (Calificaciones)")
             st.write("Genera una hoja de cálculo con formato institucional para el registro físico de calificaciones de las actividades creadas.")
 
             alumnos_eval_df = pd.read_sql(
@@ -1782,6 +1770,7 @@ elif menu == "📊 Evaluaciones":
                 params=(id_g_eval,)
             )
 
+            # CORREGIDO AQUÍ: Se cambió period_eval por periodo_eval
             acts_eval_df = pd.read_sql(
                 """
                 SELECT nombre, tipo, fecha FROM actividades_eval WHERE grupo_id = ? AND periodo = ? ORDER BY fecha ASC
@@ -1806,7 +1795,7 @@ elif menu == "📊 Evaluaciones":
     else:
         st.info("Crea grupos y alumnos primero.")
 
-# --- 6. BITÁCORA (CON REGISTRO MANUAL, HISTORIAL Y PLANTILLAS FÍSICAS) ---
+# --- 6. BITÁCORA ---
 elif menu == "📝 Bitácora":
     st.subheader("Registro de Incidencias, Observaciones y Plantillas Físicas")
     grupos_df = pd.read_sql(
@@ -2093,7 +2082,7 @@ elif menu == "📄 Reportes y PDFs":
     else:
         st.info("Crea tus grupos primero.")
 
-# --- 8. GESTIÓN DE USUARIOS (SOLO ADMINISTRADOR) ---
+# --- 8. GESTIÓN DE USUARIOS ---
 elif (
     menu == "🔑 Gestión de Usuarios"
     and st.session_state.role == "Administrador"
