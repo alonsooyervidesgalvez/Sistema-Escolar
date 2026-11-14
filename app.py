@@ -6,6 +6,9 @@ import json
 from fpdf import FPDF
 import pandas as pd
 import streamlit as st
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+from openpyxl.utils import get_column_letter
 
 # Intentar importar librerías para Gemini Vision
 try:
@@ -226,6 +229,212 @@ class PDF(FPDF):
             0,
             "C",
         )
+
+
+# --- UTILIDADES DE ESTILADO PARA EXCEL (OPENPYXL) ---
+FONT_NAME = "Arial"
+COLOR_PRIMARIO = "1F4E78"  # Azul institucional oscuro
+COLOR_TEXTO_BLANCO = "FFFFFF"
+COLOR_BG_CLARO = "D9E1F2"  # Azul muy claro para subtítulos
+COLOR_BORDE = "D3D3D3"     # Gris claro
+
+font_titulo = Font(name=FONT_NAME, size=16, bold=True, color=COLOR_PRIMARIO)
+font_subtitulo = Font(name=FONT_NAME, size=12, bold=True, color="333333")
+font_encabezado = Font(name=FONT_NAME, size=11, bold=True, color=COLOR_TEXTO_BLANCO)
+font_datos = Font(name=FONT_NAME, size=11, color="000000")
+font_pie = Font(name=FONT_NAME, size=9, italic=True, color="555555")
+
+fill_encabezado = PatternFill(start_color=COLOR_PRIMARIO, end_color=COLOR_PRIMARIO, fill_type="solid")
+fill_subtotal = PatternFill(start_color=COLOR_BG_CLARO, end_color=COLOR_BG_CLARO, fill_type="solid")
+
+thin_border = Border(
+    left=Side(style='thin', color=COLOR_BORDE),
+    right=Side(style='thin', color=COLOR_BORDE),
+    top=Side(style='thin', color=COLOR_BORDE),
+    bottom=Side(style='thin', color=COLOR_BORDE)
+)
+
+align_center = Alignment(horizontal="center", vertical="center")
+align_left = Alignment(horizontal="left", vertical="center")
+align_right = Alignment(horizontal="right", vertical="center")
+align_wrap = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+def aplicar_estilo_tabla(ws, start_row, start_col, end_row, end_col, es_matriz=False):
+    """Aplica bordes, fuentes y alineación estándar a un rango de celdas."""
+    for r in range(start_row, end_row + 1):
+        for c in range(start_col, end_col + 1):
+            cell = ws.cell(row=r, column=c)
+            cell.font = font_datos
+            cell.border = thin_border
+            if r == start_row:
+                cell.font = font_encabezado
+                cell.fill = fill_encabezado
+                cell.alignment = align_center if es_matriz else (align_left if c == 2 else align_center)
+            else:
+                if c <= 3:
+                    cell.alignment = align_center if c != 2 else align_left
+                else:
+                    cell.alignment = align_center
+
+def autoajustar_columnas(ws, min_width=12):
+    """Ajusta el ancho de las columnas para que el contenido sea legible."""
+    for col in ws.columns:
+        max_len = 0
+        col_letter = get_column_letter(col[0].column)
+        for cell in col:
+            if cell.value:
+                lines = str(cell.value).split('\n')
+                for line in lines:
+                    if len(str(line)) > max_len:
+                        max_len = len(str(line))
+        ws.column_dimensions[col_letter].width = max(max_len + 3, min_width)
+
+def generar_excel_asistencia(g_nombre, anio, mes, alumnos_df):
+    """Genera una plantilla Excel estética para toma de asistencia física."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Asistencia"
+    ws.views.sheetView[0].showGridLines = True
+
+    # Títulos
+    ws.merge_cells("A1:G1")
+    ws["A1"] = "SISTEMA DE GESTIÓN ESCOLAR - CONTROL DE ASISTENCIA"
+    ws["A1"].font = font_titulo
+    ws["A1"].alignment = align_left
+
+    mes_nombre = calendar.month_name[mes].upper()
+    ws.merge_cells("A2:G2")
+    ws["A2"] = f"GRUPO: {g_nombre.upper()}  |  MES: {mes_nombre} {anio}"
+    ws["A2"].font = font_subtitulo
+    ws["A2"].alignment = align_left
+
+    ws["A3"] = "Instrucciones: Registre 'P' para Presente, 'F' para Falta, 'R' para Retardo o 'J' para Justificado."
+    ws["A3"].font = font_pie
+
+    num_dias = calendar.monthrange(anio, mes)[1]
+    
+    # Encabezados de tabla
+    encabezados = ["N° Lista", "Nombre del Alumno", "Sexo"] + [str(d) for d in range(1, num_dias + 1)]
+    ws.append([]) # Fila vacía
+    ws.append(encabezados) # Fila 5
+
+    start_row = 5
+    end_row = start_row + len(alumnos_df)
+
+    for idx, row in alumnos_df.iterrows():
+        ws.append([row['N° Lista'], row['Nombre del Alumno'], row['Género']] + [""] * num_dias)
+
+    # Estilado
+    ultima_col = 3 + num_dias
+    aplicar_estilo_tabla(ws, start_row, 1, end_row, ultima_col, es_matriz=True)
+    
+    # Formato especial para columnas fijas
+    ws.column_dimensions['A'].width = 10
+    ws.column_dimensions['B'].width = 35
+    ws.column_dimensions['C'].width = 8
+
+    # Ancho fijo para columnas de días para escritura a mano
+    for c in range(4, ultima_col + 1):
+        ws.column_dimensions[get_column_letter(c)].width = 6
+
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+def generar_excel_calificaciones(g_nombre, periodo, acts_df, alumnos_df):
+    """Genera una plantilla Excel estética para concentrado de calificaciones físicas."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Calificaciones"
+    ws.views.sheetView[0].showGridLines = True
+
+    ws.merge_cells("A1:F1")
+    ws["A1"] = "SISTEMA DE GESTIÓN ESCOLAR - CONCENTRADO DE EVALUACIONES"
+    ws["A1"].font = font_titulo
+    ws["A1"].alignment = align_left
+
+    ws.merge_cells("A2:F2")
+    ws["A2"] = f"GRUPO: {g_nombre.upper()}  |  PERIODO: {periodo.upper()}"
+    ws["A2"].font = font_subtitulo
+    ws["A2"].alignment = align_left
+
+    ws["A3"] = "Instrucciones: Asigne una calificación numérica (0.0 a 10.0) en la columna correspondiente a cada actividad."
+    ws["A3"].font = font_pie
+
+    encabezados = ["N° Lista", "Nombre del Alumno", "Sexo"]
+    for _, act in acts_df.iterrows():
+        encabezados.append(f"[{act['tipo'][:3].upper()}] {act['nombre']}\n({act['fecha']})")
+
+    ws.append([])
+    ws.append(encabezados)
+
+    start_row = 5
+    end_row = start_row + len(alumnos_df)
+
+    for idx, row in alumnos_df.iterrows():
+        fila_datos = [row['N° Lista'], row['Nombre del Alumno'], row['Género']] + [""] * len(acts_df)
+        ws.append(fila_datos)
+
+    ultima_col = 3 + len(acts_df)
+    aplicar_estilo_tabla(ws, start_row, 1, end_row, ultima_col, es_matriz=True)
+
+    ws.column_dimensions['A'].width = 10
+    ws.column_dimensions['B'].width = 35
+    ws.column_dimensions['C'].width = 8
+
+    for c in range(4, ultima_col + 1):
+        ws.column_dimensions[get_column_letter(c)].width = 18
+
+    # Ajuste de altura para filas de encabezados largos
+    ws.row_dimensions[5].height = 35
+
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
+
+def generar_excel_bitacora(g_nombre, alumnos_df):
+    """Genera una plantilla Excel estética para bitácora de incidencias."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Bitácora"
+    ws.views.sheetView[0].showGridLines = True
+
+    ws.merge_cells("A1:F1")
+    ws["A1"] = "SISTEMA DE GESTIÓN ESCOLAR - BITÁCORA DE INCIDENCIAS"
+    ws["A1"].font = font_titulo
+    ws["A1"].alignment = align_left
+
+    ws.merge_cells("A2:F2")
+    ws["A2"] = f"GRUPO: {g_nombre.upper()}"
+    ws["A2"].font = font_subtitulo
+    ws["A2"].alignment = align_left
+
+    ws["A3"] = "Instrucciones: Anote la fecha, tipo de incidencia (Retardo, Conducta, etc.) y observaciones."
+    ws["A3"].font = font_pie
+
+    encabezados = ["N° Lista", "Nombre del Alumno", "Fecha", "Tipo de Incidencia", "Descripción / Observaciones", "Firma"]
+    
+    ws.append([])
+    ws.append(encabezados)
+
+    start_row = 5
+    end_row = start_row + len(alumnos_df)
+
+    for idx, row in alumnos_df.iterrows():
+        ws.append([row['N° Lista'], row['Nombre del Alumno'], "", "", "", ""])
+
+    aplicar_estilo_tabla(ws, start_row, 1, end_row, 6, es_matriz=False)
+
+    ws.column_dimensions['A'].width = 10
+    ws.column_dimensions['B'].width = 30
+    ws.column_dimensions['C'].width = 15
+    ws.column_dimensions['D'].width = 25
+    ws.column_dimensions['E'].width = 45
+    ws.column_dimensions['F'].width = 15
+
+    output = io.BytesIO()
+    wb.save(output)
+    return output.getvalue()
 
 
 # --- CONFIGURACIÓN DE LA INTERFAZ ---
@@ -667,7 +876,6 @@ elif menu == "📂 Plantillas de Otros Docentes":
         st.markdown(
             "### 🔄 Importar / Clonar este grupo a mi cuenta personal"
         )
-        # MODIFICACIÓN DE HOY: Se quita el sufijo forzoso "(Copia)" para clonar con el nombre original limpio
         nuevo_nombre_clon = st.text_input(
             "Nombre que tendrá este grupo en tu cuenta:",
             value=nombre_original,
@@ -710,9 +918,9 @@ elif menu == "📂 Plantillas de Otros Docentes":
             "No hay grupos de otros docentes disponibles en este momento para consultar."
         )
 
-# --- 4. ASISTENCIA (CON MATRIZ MANUAL Y ESCANEO CON GEMINI AI) ---
+# --- 4. ASISTENCIA (CON MATRIZ MANUAL, ESCANEO CON GEMINI AI Y PLANTILLA EXCEL) ---
 elif menu == "✅ Asistencia":
-    st.subheader("Control de Asistencia y Escaneo Inteligente con IA")
+    st.subheader("Control de Asistencia, Escaneo Inteligente y Plantillas Físicas")
     
     grupos_df = pd.read_sql(
         "SELECT * FROM grupos WHERE username = ?",
@@ -723,7 +931,11 @@ elif menu == "✅ Asistencia":
     if not grupos_df.empty:
         grupo_dict = dict(zip(grupos_df["nombre"], grupos_df["id"]))
 
-        tab_manual, tab_ia = st.tabs(["📝 Matriz Manual Mensual", "📸 Escanear Lista Física con IA (Gemini)"])
+        tab_manual, tab_ia, tab_plantilla = st.tabs([
+            "📝 Matriz Manual Mensual", 
+            "📸 Escanear Lista Física con IA (Gemini)",
+            "🖨️ Descargar Plantilla Física (Excel Estético)"
+        ])
 
         # --- PESTAÑA 1: MATRIZ MANUAL ---
         with tab_manual:
@@ -938,10 +1150,41 @@ elif menu == "✅ Asistencia":
                             st.success(f"¡Se han registrado {contador_guardados} asistencias correctamente con la IA!")
                             del st.session_state['datos_ia_extraidos']
                             st.rerun()
-    else:
-        st.info("Crea grupos y alumnos primero en tu sección.")
 
-# --- 5. EVALUACIONES (CON CONFIGURACIÓN DE FECHAS, PONDERACIÓN Y ASISTENCIA) ---
+        # --- PESTAÑA 3: DESCARGAR PLANTILLA FÍSICA ESTÉTICA ---
+        with tab_plantilla:
+            st.markdown("### 🖨️ Descargar Plantilla de Asistencia para Llenado Físico")
+            st.write("Genera una hoja de cálculo con formato institucional, optimizada para imprimirse y llenarse a mano. Al escanearla de vuelta, la IA reconocerá los datos.")
+            
+            c_p1, c_p2, c_p3 = st.columns(3)
+            with c_p1:
+                g_plantilla = st.selectbox("Selecciona grupo para la plantilla", list(grupo_dict.keys()), key="plantilla_g")
+            with c_p2:
+                anio_plantilla = st.selectbox("Año para la plantilla", [2025, 2026, 2027, 2028], index=1, key="plantilla_anio")
+            with c_p3:
+                mes_plantilla = st.selectbox("Mes para la plantilla", list(meses_dict.keys()), index=10, key="plantilla_mes")
+
+            alumnos_plantilla = pd.read_sql(
+                """
+                SELECT numero_lista AS 'N° Lista', nombre AS 'Nombre del Alumno', sexo AS 'Género'
+                FROM alumnos WHERE grupo_id = ? AND estatus = 'Activo' ORDER BY numero_lista ASC
+            """,
+                conn,
+                params=(grupo_dict[g_plantilla],)
+            )
+
+            if not alumnos_plantilla.empty:
+                byte_excel = generar_excel_asistencia(g_plantilla, anio_plantilla, meses_dict[mes_plantilla], alumnos_plantilla)
+                st.download_button(
+                    label="⬇️ Descargar Plantilla de Asistencia (Excel Estético)",
+                    data=byte_excel,
+                    file_name=f"Plantilla_Asistencia_{g_plantilla}_{mes_plantilla}_{anio_plantilla}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                st.warning("El grupo seleccionado no tiene alumnos activos.")
+
+# --- 5. EVALUACIONES (CON CONFIGURACIÓN DE FECHAS, PONDERACIÓN, ASISTENCIA Y PLANTILLAS) ---
 elif menu == "📊 Evaluaciones":
     st.subheader(
         "📊 Sistema de Evaluaciones, Fechas, Ponderación y Asistencia"
@@ -973,12 +1216,13 @@ elif menu == "📊 Evaluaciones":
 
         id_g_eval = grupo_dict[g_eval]
 
-        tab_fechas_pond, tab_acts, tab_matriz, tab_rep = st.tabs(
+        tab_fechas_pond, tab_acts, tab_matriz, tab_rep, tab_plantillas_eval = st.tabs(
             [
                 "⚙️ 1. Fechas y Ponderación",
                 "📝 2. Gestionar Actividades",
                 "📊 3. Matriz de Calificaciones",
                 "📈 4. Promedios y Reporte PDF",
+                "🖨️ 5. Plantillas Físicas de Evaluación"
             ]
         )
 
@@ -1164,7 +1408,7 @@ elif menu == "📊 Evaluaciones":
                 ORDER BY fecha ASC
             """,
                 conn,
-                params=(id_g_eval, periodo_eval),
+                params=(id_g_eval, period_eval),
             )
 
             if not acts_df.empty:
@@ -1523,12 +1767,48 @@ elif menu == "📊 Evaluaciones":
                     )
             else:
                 st.info("Crea alumnos en el grupo primero.")
+
+        # --- PESTAÑA 5: DESCARGAR PLANTILLA FÍSICA DE EVALUACIONES ---
+        with tab_plantillas_eval:
+            st.markdown("### 🖨️ Descargar Plantilla Físicas de Evaluación (Calificaciones)")
+            st.write("Genera una hoja de cálculo con formato institucional para el registro físico de calificaciones de las actividades creadas.")
+
+            alumnos_eval_df = pd.read_sql(
+                """
+                SELECT numero_lista AS 'N° Lista', nombre AS 'Nombre del Alumno', sexo AS 'Género'
+                FROM alumnos WHERE grupo_id = ? AND estatus = 'Activo' ORDER BY numero_lista ASC
+            """,
+                conn,
+                params=(id_g_eval,)
+            )
+
+            acts_eval_df = pd.read_sql(
+                """
+                SELECT nombre, tipo, fecha FROM actividades_eval WHERE grupo_id = ? AND periodo = ? ORDER BY fecha ASC
+            """,
+                conn,
+                params=(id_g_eval, periodo_eval)
+            )
+
+            if not alumnos_eval_df.empty and not acts_eval_df.empty:
+                byte_excel_calif = generar_excel_calificaciones(g_eval, periodo_eval, acts_eval_df, alumnos_eval_df)
+                st.download_button(
+                    label="⬇️ Descargar Plantilla de Calificaciones (Excel Estético)",
+                    data=byte_excel_calif,
+                    file_name=f"Plantilla_Calificaciones_{g_eval}_{periodo_eval}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+            else:
+                if alumnos_eval_df.empty:
+                    st.warning("El grupo no tiene alumnos activos.")
+                if acts_eval_df.empty:
+                    st.info("No hay actividades registradas en este periodo para generar la plantilla.")
     else:
         st.info("Crea grupos y alumnos primero.")
 
-# --- 6. BITÁCORA ---
+# --- 6. BITÁCORA (CON REGISTRO MANUAL, HISTORIAL Y PLANTILLAS FÍSICAS) ---
 elif menu == "📝 Bitácora":
-    st.subheader("Registro de Incidencias y Observaciones")
+    st.subheader("Registro de Incidencias, Observaciones y Plantillas Físicas")
     grupos_df = pd.read_sql(
         "SELECT * FROM grupos WHERE username = ?",
         conn,
@@ -1537,58 +1817,87 @@ elif menu == "📝 Bitácora":
 
     if not grupos_df.empty:
         grupo_dict = dict(zip(grupos_df["nombre"], grupos_df["id"]))
-        g_bit = st.selectbox(
-            "Selecciona tu grupo", list(grupo_dict.keys()), key="g_bit"
-        )
+        
+        tab_registro, tab_plantilla_bit = st.tabs(["✍️ Registro e Historial", "🖨️ Descargar Plantilla Física de Bitácora"])
 
-        alumnos_df = pd.read_sql(
-            "SELECT id, numero_lista, nombre FROM alumnos WHERE grupo_id = ? ORDER BY numero_lista ASC",
-            conn,
-            params=(grupo_dict[g_bit],),
-        )
-
-        if not alumnos_df.empty:
-            alumnos_dict = {
-                f"[{r['numero_lista']}] {r['nombre']}": r["id"]
-                for _, r in alumnos_df.iterrows()
-            }
-            al_sel = st.selectbox(
-                "Seleccionar alumno", list(alumnos_dict.keys())
-            )
-            fecha_bit = datetime.today().strftime("%Y-%m-%d")
-            incidencia = st.text_area(
-                "Descripción de la incidencia u observación"
+        with tab_registro:
+            g_bit = st.selectbox(
+                "Selecciona tu grupo", list(grupo_dict.keys()), key="g_bit"
             )
 
-            if st.button("Guardar en Bitácora"):
-                if incidencia.strip():
-                    with st.spinner("Guardando en bitácora..."):
-                        cursor.execute(
-                            "INSERT INTO bitacora (alumno_id, fecha, incidencia) VALUES (?, ?, ?)",
-                            (alumnos_dict[al_sel], fecha_bit, incidencia),
-                        )
-                        conn.commit()
-                        st.success("Incidencia registrada correctamente.")
+            alumnos_df = pd.read_sql(
+                "SELECT id, numero_lista, nombre FROM alumnos WHERE grupo_id = ? ORDER BY numero_lista ASC",
+                conn,
+                params=(grupo_dict[g_bit],),
+            )
+
+            if not alumnos_df.empty:
+                alumnos_dict = {
+                    f"[{r['numero_lista']}] {r['nombre']}": r["id"]
+                    for _, r in alumnos_df.iterrows()
+                }
+                al_sel = st.selectbox(
+                    "Seleccionar alumno", list(alumnos_dict.keys())
+                )
+                fecha_bit = datetime.today().strftime("%Y-%m-%d")
+                incidencia = st.text_area(
+                    "Descripción de la incidencia u observación"
+                )
+
+                if st.button("Guardar en Bitácora"):
+                    if incidencia.strip():
+                        with st.spinner("Guardando en bitácora..."):
+                            cursor.execute(
+                                "INSERT INTO bitacora (alumno_id, fecha, incidencia) VALUES (?, ?, ?)",
+                                (alumnos_dict[al_sel], fecha_bit, incidencia),
+                            )
+                            conn.commit()
+                            st.success("Incidencia registrada correctamente.")
+                    else:
+                        st.warning("Escribe una descripción.")
+
+                st.markdown("---")
+                st.markdown("### Historial del Alumno")
+                historial_df = pd.read_sql(
+                    f"""
+                    SELECT fecha AS Fecha, incidencia AS Incidencia 
+                    FROM bitacora 
+                    WHERE alumno_id = {alumnos_dict[al_sel]}
+                    ORDER BY fecha DESC
+                """,
+                    conn,
+                )
+                if not historial_df.empty:
+                    st.dataframe(historial_df, use_container_width=True)
                 else:
-                    st.warning("Escribe una descripción.")
+                    st.info("Sin registros en la bitácora para este alumno.")
+            else:
+                st.warning("Este grupo no tiene alumnos.")
 
-            st.markdown("---")
-            st.markdown("### Historial del Alumno")
-            historial_df = pd.read_sql(
-                f"""
-                SELECT fecha AS Fecha, incidencia AS Incidencia 
-                FROM bitacora 
-                WHERE alumno_id = {alumnos_dict[al_sel]}
-                ORDER BY fecha DESC
+        with tab_plantilla_bit:
+            st.markdown("### 🖨️ Descargar Plantilla de Bitácora para Llenado Físico")
+            st.write("Genera una hoja de cálculo estética para llevar el control físico de incidencias en el aula.")
+            
+            g_bit_p = st.selectbox("Selecciona grupo para la plantilla", list(grupo_dict.keys()), key="bit_plantilla_g")
+            alumnos_bit_df = pd.read_sql(
+                """
+                SELECT numero_lista AS 'N° Lista', nombre AS 'Nombre del Alumno', sexo AS 'Género'
+                FROM alumnos WHERE grupo_id = ? AND estatus = 'Activo' ORDER BY numero_lista ASC
             """,
                 conn,
+                params=(grupo_dict[g_bit_p],)
             )
-            if not historial_df.empty:
-                st.dataframe(historial_df, use_container_width=True)
+
+            if not alumnos_bit_df.empty:
+                byte_excel_bit = generar_excel_bitacora(g_bit_p, alumnos_bit_df)
+                st.download_button(
+                    label="⬇️ Descargar Plantilla de Bitácora (Excel Estético)",
+                    data=byte_excel_bit,
+                    file_name=f"Plantilla_Bitacora_{g_bit_p}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
             else:
-                st.info("Sin registros en la bitácora para este alumno.")
-        else:
-            st.warning("Este grupo no tiene alumnos.")
+                st.warning("El grupo no tiene alumnos activos.")
     else:
         st.info("Crea grupos y alumnos primero.")
 
